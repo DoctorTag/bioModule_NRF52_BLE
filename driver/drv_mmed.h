@@ -1,17 +1,23 @@
 #ifndef DRV_MMED_H
 #define DRV_MMED_H
 
-#define RegNum_Addl                        0
-#define RegNum_Addm                      1
-#define RegNum_Addh                       2
-#define RegNum_Ad_Type_Cnt          3
-#define RegNum_Dev_Id                    4
+#define RegNum_Addl                        0x00
+#define RegNum_Addm                      0x01
+#define RegNum_Addh                       0x02
+#define RegNum_Ad_Type_Cnt          0x03
+#define RegNum_Dev_Id                    0x04
+#define RegNum_AP_VER                   0x05
+#define RegNum_BL_VERSION	          0x06
+#define RegNum_PStatus                   0x07
 
-#define RegNum_Fun1                     5
-#define RegNum_RMode_Fun2    6
-#define RegNum_Peripheral    7
+#define RegNum_Fun1                     0x08
+#define RegNum_RMode_Fun2    0x09
+#define BL_REG_DATA   0x0A
+#define RegNum_MAX   11
 
-#define REG_ONLY_RD_LEN  5
+//#define BL_REG_OFFSETH  RegNum_MAX    //RegNum_MAX
+
+#define REG_ONLY_RD_LEN  8
 
 
 #define SAMPLE_PPG_GDC	 0x00
@@ -30,6 +36,8 @@
 #define SAMPLE_WH		        0xc0
 
 #define SAMPLE_GSENSOR		 0xd0
+
+#define FMUP_RSP		 0xF0
 
 
 #define REG_FUN1_ECG_A             0x0001
@@ -56,8 +64,24 @@
 #define OBEY_MODE       0xc0
 #define WATCH_MODE    0xa0
 #define CAL_MODE          0x80
+#define RST_MODE        0x60
 
 #define MODE_ALL_BITS        0xe0
+
+#define OEM_MASK        0x60
+#define AP_MASK          0x80
+
+#define OEM_ID        0x20
+#define FWUP_PWD        0x58
+#define RESET_PWD        0x68
+
+
+#define BL_CMD_REBOOT    0X60
+//#define BL_CMD_UPGRADE_REQ    0X61
+#define BL_CMD_ERASEAPP    0X62
+#define BL_CMD_JMPAPP    0X63
+#define BL_CMD_APRDY    0X64
+#define BL_CMD_PROGRAM    0X6f
 
 
 typedef void   (*mmed_drdy_evt_handler_t)(void *rdata,bool isanalog) ;
@@ -77,8 +101,7 @@ void drv_mmed_rdbytes(uint8_t *regbuf,uint8_t *rdata,uint8_t size);
 //void drv_mmed_stop(uint8_t type);
 
 void drv_mmed_wrcmd(uint8_t reg_mfun2,uint8_t reg_fun1);
-
-
+void drv_mmed_int_enable(bool istrue);
 #if defined MMED_TEST_IND
 
 void drv_mmed_test_ind(bool isset);

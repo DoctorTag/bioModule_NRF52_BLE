@@ -61,10 +61,9 @@ void mmed_twi_init (void)
     {
         .scl                = MMED_SCL_PIN,
         .sda                = MMED_SDA_PIN,
-        .frequency          = NRF_TWI_FREQ_100K,
-        .interrupt_priority = APP_IRQ_PRIORITY_HIGH,
-        .clear_bus_init     = false
-    };
+        .frequency          = NRF_DRV_TWI_FREQ_100K,
+       .interrupt_priority = APP_IRQ_PRIORITY_HIGH,
+       .clear_bus_init     = false    };
 
     err_code = nrf_drv_twi_init(&mmed_twi, &twi_mmed_config, mmed_twi_handler, NULL);
     APP_ERROR_CHECK(err_code);

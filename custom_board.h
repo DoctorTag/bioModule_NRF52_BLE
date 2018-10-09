@@ -49,9 +49,9 @@ extern "C" {
 //#define   FEELKIT_WMMED_TEST
 //#define   FEELKIT_WMMED_V10AC
 
-  #define   MED_MAIN_NRF_V10A
-//#define   FEELKIT_WMMED_SPI
-#define   FEELKIT_WMMED_I2C
+#define   MED_MAIN_NRF_V10A
+#define   FEELKIT_WMMED_SPI
+//#define   FEELKIT_WMMED_I2C
 
 
 
@@ -74,6 +74,8 @@ extern "C" {
 #include "med_main_nrf_v10a.h"
 
 #endif
+
+
 // Low frequency clock source to be used by the SoftDevice
 #define NRF_CLOCK_LFCLKSRC      {.source       = NRF_CLOCK_LF_SRC_XTAL,      \
                                  .rc_ctiv      = 0,                          \

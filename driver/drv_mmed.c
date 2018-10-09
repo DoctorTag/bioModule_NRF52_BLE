@@ -26,29 +26,29 @@
 
 
 //#define MMED_RXD_LEN      8
-#ifdef FEELKIT_WMMED_SPI
+//#ifdef FEELKIT_WMMED_SPI
 static uint8_t mmed_rdreg[4]= {RegNum_Addl ,RegNum_Addm,RegNum_Addh, RegNum_Ad_Type_Cnt };
-#endif
+//#endif
 static uint8_t mmed_rxdata[4]= {0x00 ,0x00,0x00, 0x00 };
 
 
 mmed_drdy_evt_handler_t drdy_evt_cb ;      ///< Callback. Invoked when a pin interrupt is caught by GPIOTE.
 
-
+static bool     mmed_initialized = false;      /**< This variable Indicates if the module is initialized or not. */
 
 
 uint8_t drv_mmed_rdreg( uint8_t reg)
 {
 #ifdef FEELKIT_WMMED_I2C
 
-    mmed_twi_read(reg,mmed_rxdata,1);
+    mmed_twi_read(reg|0x80,mmed_rxdata,1);
     return mmed_rxdata[0];
 #endif
 
 #ifdef FEELKIT_WMMED_SPI
 
 
-    return mmed_spi_read(reg);
+    return mmed_spi_read(reg|0x80);
 
 
 #endif
@@ -73,7 +73,8 @@ void drv_mmed_wrreg( uint8_t reg,uint8_t data)
 
 #ifdef FEELKIT_WMMED_SPI
 
-    mmed_spi_write(reg,data);
+    mmed_rxdata[0] = data;
+    mmed_spi_write(reg,mmed_rxdata,1);
 
 #endif
 
@@ -81,19 +82,19 @@ void drv_mmed_wrreg( uint8_t reg,uint8_t data)
 
 }
 
-void drv_mmed_adc_read(void)
+void drv_mmed_int_read(void)
 {
 #ifdef FEELKIT_WMMED_I2C
-   mmed_twi_read(RegNum_Addl ,mmed_rxdata,4);
-/*
-  uint8_t   i;
+  //  mmed_twi_read(RegNum_Addl|0x80 ,mmed_rxdata,4);
+   
+      uint8_t   i;
 
-    for(i=0; i<4; i++)
-    {
-       // mmed_rxdata[i] = mmed_spi_read( mmed_rdreg[i]);
-mmed_twi_read(mmed_rdreg[i] ,mmed_rxdata+i,1);
-    }
-*/
+        for(i=0; i<4; i++)
+        {
+          
+    mmed_twi_read(mmed_rdreg[i]|0x80 ,mmed_rxdata+i,1);
+        }
+   
 #endif
 
 #ifdef FEELKIT_WMMED_SPI
@@ -102,7 +103,7 @@ mmed_twi_read(mmed_rdreg[i] ,mmed_rxdata+i,1);
 
     for(i=0; i<4; i++)
     {
-        mmed_rxdata[i] = mmed_spi_read( mmed_rdreg[i]);
+        mmed_rxdata[i] = mmed_spi_read( mmed_rdreg[i] |0x80);
 
     }
 
@@ -117,13 +118,13 @@ static void mmed_drdy_evt_sceduled(void * p_event_data, uint16_t event_size)
 
 }
 */
-void mmed_drdy_evt_sceduled(void * p_event_data, uint16_t event_size)
+void mmed_int_evt_sceduled(void * p_event_data, uint16_t event_size)
 {
-    drv_mmed_adc_read();
+    drv_mmed_int_read();
     drdy_evt_cb(mmed_rxdata,false);
 }
 
-static void drdy_evt_handler(nrf_drv_gpiote_pin_t pin, nrf_gpiote_polarity_t action)
+static void int_evt_handler(nrf_drv_gpiote_pin_t pin, nrf_gpiote_polarity_t action)
 {
     uint32_t err_code;
 
@@ -134,7 +135,7 @@ static void drdy_evt_handler(nrf_drv_gpiote_pin_t pin, nrf_gpiote_polarity_t act
 //nrf_pwr_mgmt_feed();
         //   drv_mmed_rdbytes(mmed_rdreg,mmed_rxdata[mmed_rxd_ccnt],4);
 
-        err_code = app_sched_event_put(0, 0, mmed_drdy_evt_sceduled);
+        err_code = app_sched_event_put(0, 0, mmed_int_evt_sceduled);
         APP_ERROR_CHECK(err_code);
 
 
@@ -153,10 +154,10 @@ static uint32_t drdy_gpiote_init(uint32_t pin)
         APP_ERROR_CHECK(err_code);
     }
 
-    nrf_drv_gpiote_in_config_t gpiote_in_config=  GPIOTE_CONFIG_IN_SENSE_LOTOHI(true);
+    nrf_drv_gpiote_in_config_t gpiote_in_config=  GPIOTE_CONFIG_IN_SENSE_LOTOHI(false);
     gpiote_in_config.pull = NRF_GPIO_PIN_PULLUP;
     //gpiote_in_config.is_watcher = true;
-    err_code = nrf_drv_gpiote_in_init(pin, &gpiote_in_config, drdy_evt_handler);
+    err_code = nrf_drv_gpiote_in_init(pin, &gpiote_in_config, int_evt_handler);
     APP_ERROR_CHECK(err_code);
     //nrf_drv_gpiote_in_event_enable(MMED_DRDY_INT,true);
 
@@ -187,6 +188,10 @@ void drv_mmed_test_ind(bool isset)
 
 void drv_mmed_init(mmed_drdy_evt_handler_t handler  )
 {
+
+    if(mmed_initialized)
+        return;
+    mmed_initialized = true;
 #ifdef FEELKIT_WMMED_I2C
 
     mmed_twi_init ();
@@ -197,6 +202,7 @@ void drv_mmed_init(mmed_drdy_evt_handler_t handler  )
 
     mmed_spi_init ();
 #endif
+
 
     drdy_gpiote_init(MMED_DRDY_INT );
     drdy_evt_cb = handler;
@@ -218,65 +224,55 @@ void drv_mmed_uninit(void)
 
     mmed_spi_uninit ();
 #endif
+
+mmed_initialized = false;
 }
-/*
-void drv_mmed_start(uint8_t type)
+
+
+void drv_mmed_int_enable(bool istrue)
 {
-   if(type != ADC_FUN_ECG_HF )
-    {
+    if(istrue)
         nrf_drv_gpiote_in_event_enable(MMED_DRDY_INT, true);
-    }
-    drv_mmed_wrreg(RegNum_Sam_Action,  type|MMED_ADC_START);
-
-    if((type&ADC_FUN_ECG_HF) == ADC_FUN_ECG_HF )
-      saadc_sampling_event_enable(true);
-
-}
-
-
-void drv_mmed_stop(uint8_t type)
-{
-    drv_mmed_wrreg(RegNum_Sam_Action,  type);
-
-    if((type&ADC_FUN_ECG_HF) == ADC_FUN_ECG_HF )
-        saadc_sampling_event_enable(false);
-    if(type != ADC_FUN_ECG_HF )
-    {
+    else
         nrf_drv_gpiote_in_event_disable(MMED_DRDY_INT);
-    }
 
 }
-*/
 
 void drv_mmed_wrcmd(uint8_t reg_mfun2,uint8_t reg_fun1)
 {
+
     drv_mmed_wrreg(RegNum_Fun1,  reg_fun1);
-    if(reg_mfun2 &M_FUN_START)
+    if((reg_mfun2 &MODE_ALL_BITS) != RST_MODE)
     {
-        if(reg_fun1 != REG_FUN1_ECG_A )
+        if(reg_mfun2 &M_FUN_START)
         {
-            nrf_drv_gpiote_in_event_enable(MMED_DRDY_INT, true);
+            if(reg_fun1 != REG_FUN1_ECG_A )
+            {
+                nrf_drv_gpiote_in_event_enable(MMED_DRDY_INT, true);
+            }
+
+
+
+
+            if((reg_fun1&REG_FUN1_ECG_A ) == REG_FUN1_ECG_A  )
+                saadc_sampling_event_enable(true);
+
+
+
         }
-
-
-
-
-        if((reg_fun1&REG_FUN1_ECG_A ) == REG_FUN1_ECG_A  )
-            saadc_sampling_event_enable(true);
-
-        drv_mmed_wrreg(RegNum_RMode_Fun2,  reg_mfun2);
-
-    }
-    else
-    {
-        drv_mmed_wrreg(RegNum_RMode_Fun2,  reg_mfun2);
-
-        if((reg_fun1&REG_FUN1_ECG_A) == REG_FUN1_ECG_A )
-            saadc_sampling_event_enable(false);
-        if(reg_fun1 != REG_FUN1_ECG_A )
+        else
         {
-            nrf_drv_gpiote_in_event_disable(MMED_DRDY_INT);
+
+
+            if((reg_fun1&REG_FUN1_ECG_A) == REG_FUN1_ECG_A )
+                saadc_sampling_event_enable(false);
+            if(reg_fun1 != REG_FUN1_ECG_A )
+            {
+                nrf_drv_gpiote_in_event_disable(MMED_DRDY_INT);
+            }
         }
     }
+    drv_mmed_wrreg(RegNum_RMode_Fun2,  reg_mfun2);
+
 }
 

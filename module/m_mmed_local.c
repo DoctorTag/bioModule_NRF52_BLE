@@ -9,7 +9,7 @@
 #include <string.h>
 
 #include "boards.h"
-
+#include "nrf_delay.h"
 //#include "sdk_config.h"
 #include "app_uart.h"
 
@@ -27,63 +27,44 @@
 
 #include "app_scheduler.h"
 #include "nrf_pwr_mgmt.h"
+#ifdef FEELKIT_WMMED_I2C
+#include "drv_mmed_twi.h"
 
-unsigned short NumPackets, ReqSamples;
-unsigned char NumFrames;
-extern unsigned char MMDTSTRecorder_data_Buf[512], Recorder_head, Recorder_tail;
-extern unsigned short Respiration_Rate ;
-unsigned char *MMDTSTPacketAcqPrt;
-unsigned char MMDTSTRecorder_data_Buf[512], Recorder_head = 0, Recorder_tail = 0;
-unsigned int packetCounter = 0, AcqpacketCounter = 0;
+#endif
 
-extern unsigned int packetCounter , AcqpacketCounter;
-extern unsigned short BlockNum;
-extern unsigned char Store_data_rdy;
+#define MAX_RDATA_LENGTH 130
+/*1 Start+1CMD+1DLEN+2offset+128DATA+2CRC+1END*/
 
-unsigned char KeyPressed = 0;
-unsigned char keyCount = 0;
-
-unsigned char Req_Dwnld_occured;
-
-unsigned char LeadStatus = 0x0F;
-// Global flags set by events
-
-#define MAX_STR_LENGTH 64
-//char wholeString[MAX_STR_LENGTH] = "";     // The entire input string from the last 'return'
-unsigned int SlowToggle_Period = 20000 - 1;
-unsigned int FastToggle_Period = 2000 - 1;
-unsigned short Two_5millisec_Period = 60000;
-
-unsigned int EcgPtr = 0;
-unsigned char regval, Live_Streaming_flag = 0;
+#define MAX_RX_LENGTH 136
+#define CMD_LOC   1
+#define DLEN_LOC  2
 
 
-unsigned char MMDTSTTxPacket[64], MMDTSTTxCount, MMDTSTTxPacketRdy ;
-unsigned char MMDTSTRxPacket[64], MMDTSTRxCount, dumy ;
+#define MAX_TDATA_LENGTH 48
+/*1 Start+1CMD+1DLEN+48DATA+2CRC+1END*/
+
+#define MAX_TX_LENGTH 54
+
+unsigned char MMDTSTTxPacket[MAX_TX_LENGTH], MMDTSTTxCount ;
+unsigned char MMDTSTRxPacket[MAX_RX_LENGTH ], MMDTSTRxCount, dumy ;
 
 struct MMDTST_state MMDTST_Recoder_state;
-extern unsigned short Respiration_Rate;
-unsigned short timeCtr = 0;
 
 #define UART_TX_BUF_SIZE 256                         /**< UART TX buffer size. */
 #define UART_RX_BUF_SIZE 256                         /**< UART RX buffer size. */
 #define UDATA_LPLEN          32
 
+uint8_t dev_id,fwbl_ver,fwap_ver,bio_status;
 
 
 unsigned char rstate;
-unsigned short offset;
+unsigned short offset,rcrc,lcrc;
+unsigned char rlength;
 
-//void Stream_Adc_Data(unsigned char dtype,unsigned short rxdata);
-//void Stream_Data(unsigned char dtype,unsigned short rxdata,bool isadc);
 void Stream_Data(unsigned char dtype,unsigned short rxdata);
-/* mmd */
+static uint8_t freshBioSensorStatus();
 
 
-#define SAMPLE_TYPE         SAMPLE_PPG
-
-
-//#define ADC_FUN_TYPE            ADC_FUN_COMBO
 
 unsigned char AdcFunType ;
 
@@ -93,12 +74,7 @@ void RecvInit();
 void  RecvFrame( unsigned char src);
 
 void Decode_Recieved_Command(void);
-/*
-static void uart_evt_sceduled(void * p_event_data, uint16_t event_size)
-{
-    RecvFrame(*( uint8_t*)p_event_data);
-}
-*/
+
 static void rxcmd_evt_sceduled(void * p_event_data, uint16_t event_size)
 {
     Decode_Recieved_Command();
@@ -107,19 +83,12 @@ static void rxcmd_evt_sceduled(void * p_event_data, uint16_t event_size)
 static void local_utx_evt_sceduled(void * p_event_data, uint16_t event_size)
 {
     uint16_t i;
-   // uint8_t * sdata = (uint8_t *)p_event_data;
+    // uint8_t * sdata = (uint8_t *)p_event_data;
     for(i=0; i<MMDTSTTxCount; i++)
         while (app_uart_put(MMDTSTTxPacket[i]) != NRF_SUCCESS);
 
 }
 
-/**@brief   Function for handling app_uart events.
- *
- * @details This function will receive a single character from the app_uart module and append it to
- *          a string. The string will be be sent over BLE when the last character received was a
- *          'new line' '\n' (hex 0x0A) or if the string has reached the maximum data length.
- */
-/**@snippet [Handling the data received over UART] */
 
 void uart_event_handle(app_uart_evt_t * p_event)
 {
@@ -175,7 +144,7 @@ static void m_local_uart_init(void)
     APP_ERROR_CHECK(err_code);
 
 }
- uint32_t err_codeD;
+uint32_t err_codeD;
 void m_local_uart_send_bytes(uint8_t *dbuf,uint16_t len,bool sceduled)
 {
 #if NRF_MODULE_ENABLED(NRF_PWR_MGMT)
@@ -183,10 +152,10 @@ void m_local_uart_send_bytes(uint8_t *dbuf,uint16_t len,bool sceduled)
 #endif
 
     if(sceduled)
-    	{
-          err_codeD = app_sched_event_put(0, 0, local_utx_evt_sceduled);
+    {
+        err_codeD = app_sched_event_put(0, 0, local_utx_evt_sceduled);
         APP_ERROR_CHECK(err_codeD  );
-    	}
+    }
     else
     {
         uint16_t i;
@@ -198,6 +167,26 @@ void m_local_uart_send_bytes(uint8_t *dbuf,uint16_t len,bool sceduled)
 
 }
 
+static void generalRspFrame(uint8_t rspd0,uint8_t rspd1)
+{
+    uint16_t scrc = 0;
+    scrc += rspd0;
+    scrc += rspd1;
+    MMDTSTTxPacket[0] = START_DATA_HEADER;
+    MMDTSTTxPacket[1] = MMDTSTRxPacket[1];
+
+    MMDTSTTxPacket[2] = 2;
+    MMDTSTTxPacket[3] = rspd0;
+    MMDTSTTxPacket[4] = rspd1;
+
+    MMDTSTTxPacket[5] = (uint8_t)(scrc>>8);
+    MMDTSTTxPacket[6] = (uint8_t)scrc;
+    MMDTSTTxPacket[7] = END_DATA_HEADER;
+
+    MMDTSTTxCount = 8;                              // number of bytes to send
+    m_local_uart_send_bytes(MMDTSTTxPacket,MMDTSTTxCount,false);
+
+}
 /*******************************************************************************************************
  *
  *
@@ -205,175 +194,181 @@ void m_local_uart_send_bytes(uint8_t *dbuf,uint16_t len,bool sceduled)
  * *****************************************************************************************************/
 void Decode_Recieved_Command(void)
 {
-    if (MMDTST_Recoder_state.state == IDLE_STATE)
+    if(lcrc != rcrc)
     {
-        switch(MMDTST_Recoder_state.command)
-        {
-                unsigned short strcpy_i;
-            case WRITE_REG_COMMAND:     // Write Reg
-            {
-
-                if ( (MMDTSTRxPacket[2] < 12))
-                {
-
-                    //MMDTSTStop(ADC_FUN_TYPE);
-                    //MMDTSTRxPacket[3] = 0x01;
-                    //    mmdTestRegVal[MMDTSTRxPacket[2]] = MMDTSTRxPacket[3];
-                }
-                else
-                {
-                    MMDTSTRxPacket[2]  = 0;
-                    MMDTSTRxPacket[3]  = 0;
-                }
-
-                for (strcpy_i = 0; strcpy_i < 7; strcpy_i++)
-                {
-                    MMDTSTTxPacket[strcpy_i] = MMDTSTRxPacket[strcpy_i]; // Prepare the outgoing string
-                }
-
-                MMDTSTTxCount = 7;
-                MMDTSTTxPacketRdy = 1;
-
-            }
-            break;
-            case READ_REG_COMMAND:  // Read Reg
-            {
-
-                if ( (MMDTSTRxPacket[2] < 12))
-                {
-
-                    //  MMDTSTStop(ADC_FUN_TYPE);
-
-                    //MMDTSTRxPacket[3] = mmdTestRegVal[MMDTSTRxPacket[2]];
-
-                    // MMDTST_Data_rdy = 0;
-                    MMDTST_Recoder_state.state = IDLE_STATE;
-
-                }
-                else
-                {
-                    MMDTSTRxPacket[2]  = 0;
-                    MMDTSTRxPacket[3]  = 0;
-                }
-                for (strcpy_i = 0; strcpy_i < 7; strcpy_i++)
-                {
-                    MMDTSTTxPacket[strcpy_i] = MMDTSTRxPacket[strcpy_i];                                    // Prepare the outgoing string
-                }
-
-                MMDTSTTxCount = 7;
-                MMDTSTTxPacketRdy = 1;
-            }
-            break;
-            case DATA_STREAMING_COMMAND:    // Data streaming
-            {
-                //       resetFilter();
-               AdcFunType = MMDTSTRxPacket[3];
-				drv_mmed_wrreg(RegNum_Peripheral, 0x0a);
-                drv_mmed_wrcmd( MMDTSTRxPacket[2],MMDTSTRxPacket[3]);
-                MMDTST_Recoder_state.state = DATA_STREAMING_STATE;  // Set to Live Streaming state
-                Live_Streaming_flag = 1;                // Set Live Streaming Flag
-                //MMDTST_Data_rdy = 0;
-
-
-
-
-            }
-            break;
-            case ACQUIRE_DATA_COMMAND:  // Acquire Data
-
-                break;
-
-            case DATA_DOWNLOAD_COMMAND:     // RAW DATA DUMP
-            {
-
-            }
-            break;
-
-            case START_RECORDING_COMMAND:   // Processed Data Dump
-            {
-            }
-            break;
-
-            case FIRMWARE_UPGRADE_COMMAND:  // FIRMWARE UPGRADE
-
-                break;
-            case FIRMWARE_VERSION_REQ:  // firmware Version request
-            {
-                for (strcpy_i = 0; strcpy_i < 7; strcpy_i++)
-                {
-                    MMDTSTTxPacket[strcpy_i] = MMDTSTRxPacket[strcpy_i];
-                    // Prepare the outgoing string
-                }
-
-                MMDTSTTxPacket[2] = 0x02;       // Firmware Major number
-                MMDTSTTxPacket[3] = 0x0f;       // Firmware Minor number
-
-                MMDTSTTxCount = 7;                              // number of bytes to send
-                MMDTSTTxPacketRdy = 1;
-            }
-            break;
-
-            case STATUS_INFO_REQ:   // Status Request
-            {
-
-            }
-            break;
-            case FILTER_SELECT_COMMAND:     // Filter Select request
-            {
-                if ( (MMDTSTRxPacket[2] < 4) && (MMDTSTRxPacket[2] != 1) )
-                {
-                    //  Filter_Option =  MMDTSTRxPacket[3];         // Filter option from user
-
-                }
-                else
-                {
-                    MMDTSTRxPacket[2]  = 0;
-                    MMDTSTRxPacket[3]  = 0;
-                }
-
-                for (strcpy_i = 0; strcpy_i < 7; strcpy_i++)
-                {
-                    MMDTSTTxPacket[strcpy_i] = MMDTSTRxPacket[strcpy_i]; // Prepare the outgoing string
-                }
-
-                MMDTSTTxCount = 7;
-                MMDTSTTxPacketRdy = 1;
-
-
-            }
-            break;
-            case ERASE_MEMORY_COMMAND:  // MEMORY ERASE Command
-
-            default:
-
-                break;
-        }
+        generalRspFrame( MMDTSTRxPacket[1],RSP_ERROR_CRC);
     }
     else
     {
 
-        switch(MMDTST_Recoder_state.command)
+        if (MMDTST_Recoder_state.state == IDLE_STATE)
+        {
+            switch(MMDTST_Recoder_state.command)
+            {
+
+
+                case DATA_STREAMING_COMMAND:    // Data streaming
+                {
+                    if(bio_status == BIO_NORMAL)
+                    {
+                        AdcFunType = MMDTSTRxPacket[4];
+                        //  drv_mmed_wrreg(RegNum_Peripheral, 0x0a);
+                        drv_mmed_wrcmd( MMDTSTRxPacket[3],MMDTSTRxPacket[4]);
+                        MMDTST_Recoder_state.state = DATA_STREAMING_STATE;  // Set to Live Streaming state
+                        generalRspFrame( bio_status,RSP_OK);
+                    }
+                    else
+                        generalRspFrame( bio_status,RSP_ERROR_STATUS);
+
+                }
+                break;
+                case FIRMWARE_UPGRADE_CMD:
+                {
+                    if(MMDTSTRxPacket[3] == BL_CMD_PROGRAM)
+                    {
+                        if(bio_status == BIO_BOOTL)
+                        {
+                            drv_mmed_wrreg(RegNum_RMode_Fun2,  BL_CMD_PROGRAM);
+                            drv_mmed_int_enable(1);
+                            MMDTST_Recoder_state.state = FW_UPGRADING_STATE;  // Set to firmware UPGRADING state
+
+                        }
+                        else
+                            generalRspFrame( bio_status,RSP_ERROR_STATUS);
+                    }
+                }
+                break;
+
+                case DATA_DOWNLOAD_COMMAND:     // RAW DATA DUMP
+                {
+
+                }
+                break;
+
+                case START_RECORDING_COMMAND:   // Processed Data Dump
+                {
+                }
+                break;
+
+
+                case RESTART_COMMAND:  // firmware Version request
+                {
+                    if(MMDTSTRxPacket[3] == FWUPGRADE_RST)
+                    {
+                        drv_mmed_wrcmd( RST_MODE,FWUP_PWD);
+
+                    }
+                    if(MMDTSTRxPacket[3] == NORMAL_RST)
+                    {
+                        drv_mmed_wrcmd( RST_MODE,RESET_PWD);
+
+                    }
+                    generalRspFrame( MMDTSTRxPacket[4],RSP_OK);
+                }
+                break;
+
+                case FIRMWARE_VERSION_REQ:  // firmware Version request
+                {
+                    if(MMDTSTRxPacket[3] == 0)
+                        generalRspFrame(fwbl_ver,RSP_OK);
+                    if(MMDTSTRxPacket[3] == 1)
+                        generalRspFrame(fwap_ver,RSP_OK);
+                }
+                break;
+
+
+                case DEVICE_ID_REQ:  // firmware Version request
+                {
+                    generalRspFrame(dev_id,RSP_OK);
+                }
+                break;
+                case STATUS_INFO_REQ:   // Status Request
+                {
+                    freshBioSensorStatus();
+                    generalRspFrame(bio_status,RSP_OK);
+                }
+                break;
+                case FILTER_SELECT_COMMAND:     // Filter Select request
+                {
+
+
+                }
+                break;
+                default:
+
+                    break;
+            }
+        }
+        else
         {
 
-            case DATA_STREAMING_COMMAND:
+            switch(MMDTST_Recoder_state.command)
             {
-                if(AdcFunType == MMDTSTRxPacket[3])
+
+                case DATA_STREAMING_COMMAND:
                 {
-                              drv_mmed_wrcmd( MMDTSTRxPacket[2],MMDTSTRxPacket[3]);
- 
-               //     drv_mmed_stop( MMDTSTRxPacket[3]);
-                    MMDTST_Recoder_state.state = IDLE_STATE;    // Switch to Idle state
-                    //MMDTST_Data_rdy = 0;
-                    Live_Streaming_flag = 0;            // Disable Live streaming flag
+                    if(AdcFunType == MMDTSTRxPacket[4])
+                    {
+                        drv_mmed_wrcmd( MMDTSTRxPacket[3],MMDTSTRxPacket[4]);
+
+                        //     drv_mmed_stop( MMDTSTRxPacket[3]);
+                        MMDTST_Recoder_state.state = IDLE_STATE;    // Switch to Idle state
+                        //MMDTST_Data_rdy = 0;
+                        //Live_Streaming_flag = 0;            // Disable Live streaming flag
+                    }
+
                 }
-
-            }
-            break;
-            default:
-
                 break;
+
+                case FIRMWARE_UPGRADE_CMD:
+                {
+
+                    if(bio_status == BIO_BOOTL)
+                    {
+
+                        drv_mmed_wrreg(RegNum_RMode_Fun2, MMDTSTRxPacket[3]);
+
+                    }
+                    else
+                        generalRspFrame( bio_status,RSP_ERROR_STATUS);
+
+                }
+                break;
+                case FIRMWARE_UPGRADING_DATA:
+                {
+
+                    if(bio_status == BIO_BOOTL)
+                    {
+#ifdef FEELKIT_WMMED_I2C
+
+                        MMDTSTRxPacket[2] = BL_REG_DATA;
+
+                        mmed_twi_write(MMDTSTRxPacket+2,MAX_RDATA_LENGTH+3);
+
+
+#endif
+
+#ifdef FEELKIT_WMMED_SPI
+                        for(uint8_t i=0; i<MAX_RDATA_LENGTH+2; i++)
+                        {
+                            // drv_mmed_wrreg(BL_REG_OFFSETH+i, MMDTSTRxPacket[i+3]);
+                            drv_mmed_wrreg(BL_REG_DATA, MMDTSTRxPacket[i+3]);
+
+                        }
+#endif
+                    }
+                    else
+                        generalRspFrame( bio_status,RSP_ERROR_STATUS);
+                }
+                break;
+                default:
+
+                    break;
+            }
         }
     }
+
+
     MMDTST_Recoder_state.command = 0;
 }
 
@@ -382,26 +377,29 @@ void Decode_Recieved_Command(void)
 *****************************************************************************************/
 #define  RX_HEADER           0x00
 #define  RX_CMD         0x01
-//#define  RX_CODE        0x02
+#define  RX_LENGTH        0x02
 #define  RX_DATA           0x03
-#define  RX_END            0x04
+#define  RX_CRC           0x04
+#define  RX_END            0x05
 
+#define  CMD_MASK            0xF0
+#define  CMD_HIGH            0x80
 void RecvInit()
 {
     rstate = RX_HEADER;
     offset = 0;
 
 }
+
+
 void  RecvFrame( unsigned char src)
 {
     MMDTSTRxPacket[ offset] = src ;
     offset ++;
-
-
     switch(rstate)
     {
         case RX_HEADER:
-            if(MMDTSTRxPacket[offset - 1] == START_DATA_HEADER)
+            if(MMDTSTRxPacket[offset-1] == START_DATA_HEADER)
             {
                 rstate = RX_CMD;
 
@@ -413,9 +411,9 @@ void  RecvFrame( unsigned char src)
 
             break;
         case RX_CMD:
-            if((0x90 & MMDTSTRxPacket[offset - 1]) == 0x90)
+            if((CMD_MASK & MMDTSTRxPacket[offset-1]) == CMD_HIGH)
             {
-                rstate = RX_DATA;
+                rstate = RX_LENGTH;
 
             }
             else
@@ -423,19 +421,46 @@ void  RecvFrame( unsigned char src)
                 RecvInit();
             }
             break;
-        case RX_DATA:
-            if(MMDTSTRxPacket[offset - 1] == END_DATA_HEADER)
+        case RX_LENGTH:
+            rlength = MMDTSTRxPacket[offset-1];
+            if(rlength <= MAX_RDATA_LENGTH)
             {
+                rstate = RX_DATA;
+                lcrc = 0;
+            }
+            else
+            {
+                RecvInit();
+            }
+            break;
+        case RX_DATA:
+            if(offset >= (rlength+3))
+            {
+                rstate = RX_CRC;
+
+            }
+            lcrc += MMDTSTRxPacket[offset-1];
+            break;
+        case RX_CRC:
+            if(offset == (rlength+4))
+            {
+                rcrc = MMDTSTRxPacket[offset-1];
+                rcrc <<=8;
+            }
+
+            if(offset == (rlength+5))
+            {
+                rcrc |= MMDTSTRxPacket[offset-1];
                 rstate = RX_END;
 
             }
-            if(offset >= MAX_STR_LENGTH )
+            if(offset > (rlength+5) )
             {
                 RecvInit();
             }
             break;
         case RX_END:
-            if(MMDTSTRxPacket[offset - 1] == 0x0a)
+            if(MMDTSTRxPacket[offset-1] == 0x0a)
             {
                 MMDTST_Recoder_state.command = MMDTSTRxPacket[1];
                 //MMDTST_Recoder_state.command = readBytes;
@@ -447,12 +472,10 @@ void  RecvFrame( unsigned char src)
             }
             else
             {
-                if(offset >= MAX_STR_LENGTH)
+                if(offset >  (rlength+6))
                 {
                     RecvInit();
                 }
-                else if(MMDTSTRxPacket[offset - 1] != END_DATA_HEADER)
-                    rstate = RX_DATA;
 
             }
             break;
@@ -460,32 +483,59 @@ void  RecvFrame( unsigned char src)
 
 
 
-    //  return retvalue;
+
+}
+static uint8_t freshBioSensorStatus()
+{
+    bio_status = BIO_LOSE;
+    dev_id = drv_mmed_rdreg(RegNum_Dev_Id);
+
+    if((dev_id&OEM_MASK) == OEM_ID)
+    {
+        fwbl_ver = drv_mmed_rdreg(RegNum_BL_VERSION);
+        if(dev_id&AP_MASK)
+        {
+            fwap_ver = drv_mmed_rdreg(RegNum_AP_VER);
+            if(fwbl_ver&AP_MASK)
+                bio_status = BIO_NORMAL;
+        }
+        else if((fwbl_ver&AP_MASK) == 0)
+            bio_status = BIO_BOOTL;
+
+    }
+    return bio_status;
+//bio_status = BIO_NORMAL;
 }
 
-
-/*----------------------------------------------------------------------------+
-| Main Routine                                                                |
-+----------------------------------------------------------------------------*/
 void m_mmed_local_init(void)
 {
-    Live_Streaming_flag = 0;
+    uint8_t cnt=0,bio;
     MMDTST_Recoder_state.state = IDLE_STATE;
     MMDTST_Recoder_state.command = 0;
 
+    drv_mmed_init(m_mmed_local_hanlder);
+
+
+    drv_mmed_adc_init(m_mmed_local_hanlder);
 
     m_local_uart_init();
     RecvInit();
-    //MMDTSTFilter(0,1);
-//   NormalizeData(0, 1);
-    //  Filter_Noht_Init(250, 50, 0.005);
-    //  Filter_Low_init(0.51);
-    //  Filter_High_Init(250, 200);
-//MMDTST_StreamCmd(1);
-    //  Enable_Uart3_Receive_IT();
-
+    do
+    {
+        bio = freshBioSensorStatus();
+        nrf_delay_ms(100);
+        cnt++;
+    }
+    while((bio == BIO_LOSE)&&(cnt < 10));
 
 }
+
+
+//dev_id = AP_MASK+OEM_ID+0X01;
+//  fwbl_ver = AP_MASK+0X01;
+//fwap_ver = 0xa0;
+
+
 
 
 void m_mmed_local_hanlder(void * rdata,bool isanalog)
@@ -540,10 +590,15 @@ void m_mmed_local_hanlder(void * rdata,bool isanalog)
         }
         break;
 
-        case ACQUIRE_DATA_STATE:
+        case FW_UPGRADING_STATE:
+        {
 
+            uint8_t * tmpp = (uint8_t *)rdata;
 
-            break;
+            generalRspFrame( tmpp[3],tmpp[0]);
+        }
+
+        break;
         case MMDTST_DOWNLOAD_STATE:
 
             // Send_Recorded_MMDTST_Samples_to_USB();
@@ -574,46 +629,41 @@ static short filterd;
 
 void Stream_Data(unsigned char dtype,unsigned short rxdata)
 {
-
+    static uint16_t tmp_crc;
     if ( sampleCNT > PACK_SAMPLES) sampleCNT = 0;
 
-//    if (  MMDTST_Data_rdy == 1)
     {
         filterd = rxdata;
-        //  filterd = afe4300_Filtered_MMDTST(rxdata);
+
         if ( sampleCNT == 0)
         {
+            tmp_crc = 0;
             StreamCount = 0;
             MMDTSTTxPacket[StreamCount++] = START_DATA_HEADER;              // Packet start Header
             MMDTSTTxPacket[StreamCount++] = DATA_STREAMING_PACKET;          // Live MMDTST Streaming Header
-            // LeadStatus = 0x00;
+            MMDTSTTxPacket[StreamCount++] = MAX_TDATA_LENGTH;                  // DATA LENGTH
 
-            //  LeadStatus = (unsigned char ) 0;
-//           MMDTSTTxPacket[StreamCount++] = dtype ;
-            // Set the Current Heart rate//
             MMDTSTTxPacket[StreamCount++] = 0;                  // Heart Rate
-            // Set the current Leadoff status//
+
             MMDTSTTxPacket[StreamCount++] = 0;              // Respiration Rate
             MMDTSTTxPacket[StreamCount++] = 0 ;                 // Lead Status
         }
-//       if ( sampleCNT > PACK_SAMPLES) sampleCNT = 0;
-//       StreamCount = sampleCNT *3;                                   // Get Packet pointer
-        //      StreamCount += 5;                                                   // Offset of 5 bytes header
-        // for ( ucLoopCnt = 0 ; ucLoopCnt < 2; ucLoopCnt++)
-        {
-            MMDTSTTxPacket[StreamCount++] = dtype ;
-            MMDTSTTxPacket[StreamCount++] = (filterd & 0x00FF);         // High Byte B15-B8
-            MMDTSTTxPacket[StreamCount++] = ((filterd & 0xFF00) >> 8 );       // Low byte B7-B0
 
-            //   MMDTSTTxPacket[StreamCount++] = (MMDTSTRawData[ucLoopCnt] & 0x00FF);           // High Byte B15-B8
-            //   MMDTSTTxPacket[StreamCount++] = (MMDTSTRawData[ucLoopCnt] & 0xFF00) >> 8 ;     // Low byte B7-B0
+        tmp_crc += dtype;
+        MMDTSTTxPacket[StreamCount++] = dtype ;
+        MMDTSTTxPacket[StreamCount] = (filterd & 0x00FF);         // High Byte B15-B8
+        tmp_crc += MMDTSTTxPacket[StreamCount];
+        StreamCount++;
+        MMDTSTTxPacket[StreamCount] = ((filterd & 0xFF00) >> 8 );       // Low byte B7-B0
+        tmp_crc += MMDTSTTxPacket[StreamCount];
+        StreamCount++;
 
-        }
         sampleCNT++;
         if ( sampleCNT == PACK_SAMPLES)
         {
             sampleCNT = 0;
-            MMDTSTTxPacket[StreamCount++] = END_DATA_HEADER;    // Packet end header
+            MMDTSTTxPacket[StreamCount++] = (uint8_t)(tmp_crc>>8);
+            MMDTSTTxPacket[StreamCount++] = (uint8_t)tmp_crc;
             MMDTSTTxPacket[StreamCount++] = '\n';
             //MMDTSTTxPacketRdy = 1;                      // Set packet ready flag after every 14th sample.
             MMDTSTTxCount = StreamCount;                    // Define number of bytes to send as 54.

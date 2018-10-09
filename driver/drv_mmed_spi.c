@@ -15,7 +15,7 @@
 
 #include "nrf_drv_spi.h"
 
-#define MMED_SPI_DELY_US        200
+#define MMED_SPI_DELY_US        500
 
 #define MMED_SPI_DEFAULT_CONFIG                           \
 {                                                            \
@@ -78,7 +78,7 @@ void mmed_spi_uninit (void)
 uint8_t mmed_spi_read( uint8_t reg)
 {
 
-    mmed_spi_buf = (0x80|reg);
+    mmed_spi_buf = (reg);
     mmed_xfer_done = false;
     nrf_drv_gpiote_out_clear(MMED_SPI_SS_PIN);
     APP_ERROR_CHECK(nrf_drv_spi_transfer(&mmed_spi, &mmed_spi_buf,1,NULL,0));
@@ -103,7 +103,7 @@ uint8_t mmed_spi_read( uint8_t reg)
 }
 
 
-void mmed_spi_write( uint8_t reg,uint8_t data)
+void mmed_spi_write( uint8_t reg,uint8_t *data,uint8_t dlen)
 {
 
     mmed_spi_buf = reg;
@@ -117,9 +117,9 @@ void mmed_spi_write( uint8_t reg,uint8_t data)
         __WFE();
     }
 
-    mmed_spi_buf = data;
+    //mmed_spi_buf = data;
     mmed_xfer_done = false;
-    APP_ERROR_CHECK(nrf_drv_spi_transfer(&mmed_spi, &mmed_spi_buf,1, NULL,0));
+    APP_ERROR_CHECK(nrf_drv_spi_transfer(&mmed_spi, data,dlen, NULL,0));
     nrf_delay_us(MMED_SPI_DELY_US);
     while (!mmed_xfer_done)
     {

@@ -74,7 +74,7 @@
 
 mmed_drdy_evt_handler_t adc_drdy_evt_cb ;      ///< Callback. Invoked when a pin interrupt is caught by GPIOTE.
 
-
+static bool saadc_initialized = false;
 volatile uint8_t state = 1;
 
 static const nrf_drv_timer_t m_timer = NRF_DRV_TIMER_INSTANCE(1);
@@ -213,6 +213,9 @@ static void saadc_init(void)
  */
 void drv_mmed_adc_init(mmed_drdy_evt_handler_t handler  )
 {
+    if(saadc_initialized)
+        return;
+    saadc_initialized = true;
     saadc_init();
     saadc_sampling_event_init();
     // saadc_sampling_event_enable();

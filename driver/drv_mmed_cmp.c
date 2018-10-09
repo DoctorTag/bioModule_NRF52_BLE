@@ -87,8 +87,9 @@ APP_TIMER_DEF(lpcomp_detection_delay_timer_id);  /**< Polling timer id. */
 #define MMED_CMP_TEST_IND  29
 
 
-static bool lpcomp_result,comp_result;
+//static bool lpcomp_result,comp_result;
 
+static bool comp_result;
 
 #if defined MMED_CMP_TEST_IND
 
@@ -105,7 +106,7 @@ void drv_mmed_cmp_ind(bool isset)
 #endif
 
 static void lpcomp_detection_delay_timeout_handler(void * p_context)
-{
+{/*
     if(nrf_drv_lpcomp_sample() == 0)
     {
         if(lpcomp_result == false)
@@ -127,7 +128,7 @@ static void lpcomp_detection_delay_timeout_handler(void * p_context)
 
 #endif
         }
-    }
+    }*/
 }
 
 static void comp_detection_delay_timeout_handler(void * p_context)
@@ -229,7 +230,7 @@ static void lpcomp_event_handler(nrf_lpcomp_event_t event)
 
     #endif */
     if (event == NRF_LPCOMP_EVENT_CROSS)
-    {
+    {/*
 
         if(nrf_drv_lpcomp_sample() == 0)
             lpcomp_result = false;
@@ -238,7 +239,7 @@ static void lpcomp_event_handler(nrf_lpcomp_event_t event)
         app_timer_stop(lpcomp_detection_delay_timer_id);
         app_timer_start(lpcomp_detection_delay_timer_id, MMED_CMP_DETECTION_DELAY, NULL);
 
-
+*/
 
     }
 }
