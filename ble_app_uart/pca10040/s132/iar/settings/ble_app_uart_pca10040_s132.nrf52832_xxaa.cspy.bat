@@ -25,7 +25,7 @@ if not "%~1" == "" goto debugFile
 
 @echo on 
 
-"C:\Program Files (x86)\IAR Systems\Embedded Workbench 7.5\common\bin\cspybat" -f "D:\software\2018\feelkit\nRF5_SDK_15.2.0_9412b96\nRF5_SDK_15.2.0_9412b96\feelkit\feel_demo\ble_app_uart\pca10040\s132\iar\settings\ble_app_uart_pca10040_s132.nrf52832_xxaa.general.xcl" --backend -f "D:\software\2018\feelkit\nRF5_SDK_15.2.0_9412b96\nRF5_SDK_15.2.0_9412b96\feelkit\feel_demo\ble_app_uart\pca10040\s132\iar\settings\ble_app_uart_pca10040_s132.nrf52832_xxaa.driver.xcl" 
+"C:\Program Files (x86)\IAR Systems\Embedded Workbench 7.5\common\bin\cspybat" -f "D:\software\2018\feelkit\nRF5_SDK_15.2.0_9412b96\nRF5_SDK_15.2.0_9412b96\feelkit\bioModule_NRF52_BLE\ble_app_uart\pca10040\s132\iar\settings\ble_app_uart_pca10040_s132.nrf52832_xxaa.general.xcl" --backend -f "D:\software\2018\feelkit\nRF5_SDK_15.2.0_9412b96\nRF5_SDK_15.2.0_9412b96\feelkit\bioModule_NRF52_BLE\ble_app_uart\pca10040\s132\iar\settings\ble_app_uart_pca10040_s132.nrf52832_xxaa.driver.xcl" 
 
 @echo off 
 goto end 
@@ -34,7 +34,7 @@ goto end
 
 @echo on 
 
-"C:\Program Files (x86)\IAR Systems\Embedded Workbench 7.5\common\bin\cspybat" -f "D:\software\2018\feelkit\nRF5_SDK_15.2.0_9412b96\nRF5_SDK_15.2.0_9412b96\feelkit\feel_demo\ble_app_uart\pca10040\s132\iar\settings\ble_app_uart_pca10040_s132.nrf52832_xxaa.general.xcl" "--debug_file=%~1" --backend -f "D:\software\2018\feelkit\nRF5_SDK_15.2.0_9412b96\nRF5_SDK_15.2.0_9412b96\feelkit\feel_demo\ble_app_uart\pca10040\s132\iar\settings\ble_app_uart_pca10040_s132.nrf52832_xxaa.driver.xcl" 
+"C:\Program Files (x86)\IAR Systems\Embedded Workbench 7.5\common\bin\cspybat" -f "D:\software\2018\feelkit\nRF5_SDK_15.2.0_9412b96\nRF5_SDK_15.2.0_9412b96\feelkit\bioModule_NRF52_BLE\ble_app_uart\pca10040\s132\iar\settings\ble_app_uart_pca10040_s132.nrf52832_xxaa.general.xcl" "--debug_file=%~1" --backend -f "D:\software\2018\feelkit\nRF5_SDK_15.2.0_9412b96\nRF5_SDK_15.2.0_9412b96\feelkit\bioModule_NRF52_BLE\ble_app_uart\pca10040\s132\iar\settings\ble_app_uart_pca10040_s132.nrf52832_xxaa.driver.xcl" 
 
 @echo off 
 :end

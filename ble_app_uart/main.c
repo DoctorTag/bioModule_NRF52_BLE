@@ -69,6 +69,8 @@
 #include "bsp_btn_ble.h"
 #include "nrf_pwr_mgmt.h"
 
+#include "app_scheduler.h"
+
 #if defined (UART_PRESENT)
 #include "nrf_uart.h"
 #endif
@@ -105,6 +107,9 @@
 
 #define UART_TX_BUF_SIZE                256                                         /**< UART TX buffer size. */
 #define UART_RX_BUF_SIZE                256                                         /**< UART RX buffer size. */
+
+#define SCHED_MAX_EVENT_DATA_SIZE   MAX(APP_TIMER_SCHED_EVENT_DATA_SIZE, 0) /**< Maximum size of scheduler events. */
+#define SCHED_QUEUE_SIZE            60  /**< Maximum number of events in the scheduler queue. */
 
 
 BLE_NUS_DEF(m_nus, NRF_SDH_BLE_TOTAL_LINK_COUNT);                                   /**< BLE NUS service instance. */
@@ -200,12 +205,12 @@ static void nus_data_handler(ble_nus_evt_t * p_evt)
 
     if (p_evt->type == BLE_NUS_EVT_RX_DATA)
     {
-     //   uint32_t err_code;
+      uint32_t err_code;
 
         NRF_LOG_DEBUG("Received data from BLE NUS. Writing data on UART.");
         NRF_LOG_HEXDUMP_DEBUG(p_evt->params.rx_data.p_data, p_evt->params.rx_data.length);
-        m_local_uart_send_bytes((uint8_t *)p_evt->params.rx_data.p_data,p_evt->params.rx_data.length,false);
-        /*
+      //  m_local_uart_send_bytes((uint8_t *)p_evt->params.rx_data.p_data,p_evt->params.rx_data.length,false);
+        
                 for (uint32_t i = 0; i < p_evt->params.rx_data.length; i++)
                 {
                     do
@@ -218,11 +223,11 @@ static void nus_data_handler(ble_nus_evt_t * p_evt)
                         }
                     }
                     while (err_code == NRF_ERROR_BUSY);
-                } */
+                } 
         if (p_evt->params.rx_data.p_data[p_evt->params.rx_data.length-1] == '\r')
         {
-            m_local_uart_send_bytes("\n",1,false);
-            // while (app_uart_put('\n') == NRF_ERROR_BUSY);
+           // m_local_uart_send_bytes("\n",1,false);
+           while (app_uart_put('\n') == NRF_ERROR_BUSY);
         }
         
     }
@@ -592,8 +597,8 @@ static void uart_init(void)
     {
         .rx_pin_no    = RX_PIN_NUMBER,
         .tx_pin_no    = TX_PIN_NUMBER,
-        .rts_pin_no   = RTS_PIN_NUMBER,
-        .cts_pin_no   = CTS_PIN_NUMBER,
+        .rts_pin_no   = 0xff,
+        .cts_pin_no   = 0xff,
         .flow_control = APP_UART_FLOW_CONTROL_DISABLED,
         .use_parity   = false,
 #if defined (UART_PRESENT)
@@ -707,13 +712,16 @@ static void advertising_start(void)
 int main(void)
 {
     bool erase_bonds;
+    NRF_UICR->NFCPINS = 0;
+
+    APP_SCHED_INIT(SCHED_MAX_EVENT_DATA_SIZE, SCHED_QUEUE_SIZE);
 
     // Initialize.
    // uart_init();
-    
+    m_mmed_local_init();
     log_init();
     timers_init();
-    m_mmed_local_init();
+    
     buttons_leds_init(&erase_bonds);
     power_management_init();
     ble_stack_init();
@@ -731,6 +739,7 @@ int main(void)
     // Enter main loop.
     for (;;)
     {
+      app_sched_execute();
         idle_state_handle();
     }
 }
