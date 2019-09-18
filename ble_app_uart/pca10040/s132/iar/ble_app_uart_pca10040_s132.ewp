@@ -189,7 +189,7 @@
         </option>
         <option>
           <name>CCDefines</name>
-          <state>BOARD_CUSTOM</state>
+          <state>BOARD_WMMED</state>
           <state>CONFIG_NFCT_PINS_AS_GPIOS</state>
           <state>FLOAT_ABI_HARD</state>
           <state>NRF52</state>
@@ -1272,6 +1272,9 @@
     </file>
     <file>
       <name>$PROJ_DIR$\..\..\..\..\..\..\components\libraries\bsp\bsp_btn_ble.c</name>
+      <excluded>
+        <configuration>nrf52832_xxaa</configuration>
+      </excluded>
     </file>
   </group>
   <group>

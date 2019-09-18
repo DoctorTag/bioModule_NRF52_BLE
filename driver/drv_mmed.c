@@ -1,8 +1,7 @@
-
+#include "boards.h"
 #include "app_util_platform.h"
 #include "nrf_gpio.h"
 #include "nrf_delay.h"
-#include "boards.h"
 #include "app_error.h"
 #include <string.h>
 #include "nrf_log.h"
@@ -14,6 +13,8 @@
 #include "app_scheduler.h"
 #include "drv_mmed.h"
 #include "drv_mmed_adc.h"
+
+
 #ifdef FEELKIT_WMMED_I2C
 #include "drv_mmed_twi.h"
 

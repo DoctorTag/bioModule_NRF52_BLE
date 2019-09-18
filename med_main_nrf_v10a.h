@@ -43,7 +43,7 @@
 
 #ifdef FEELKIT_WMMED_SPI
 #ifndef MMED_SPI_SCK_PIN
-#define MMED_SPI_SCK_PIN   21 
+#define MMED_SPI_SCK_PIN   23 
 #endif
 
 #ifndef MMED_SPI_MISO_PIN
@@ -68,7 +68,7 @@
  #ifdef FEELKIT_WMMED_I2C
  
 #ifndef MMED_SCL_PIN
-#define MMED_SCL_PIN   21 
+#define MMED_SCL_PIN   23 
 #endif
 
 
@@ -152,22 +152,22 @@
 
 #define BSP_LED_0      LED_1
 
-#define BUTTONS_NUMBER 1
+#define BUTTONS_NUMBER 0
 
-#define BUTTON_START   25
-#define BUTTON_1       25
+//#define BUTTON_START   25
+//#define BUTTON_1       25
 //#define BUTTON_2       14
 //#define BUTTON_3       15
 //#define BUTTON_4       16
-#define BUTTON_STOP   25
-#define BUTTON_PULL    NRF_GPIO_PIN_PULLUP
+//#define BUTTON_STOP   25
+//#define BUTTON_PULL    NRF_GPIO_PIN_PULLUP
 
-#define BUTTONS_ACTIVE_STATE 0
+//#define BUTTONS_ACTIVE_STATE 0
 
 //#define BUTTONS_LIST { BUTTON_1, BUTTON_2, BUTTON_3, BUTTON_4 }
-#define BUTTONS_LIST { BUTTON_1 }
+//#define BUTTONS_LIST { BUTTON_1 }
 
-#define BSP_BUTTON_0   BUTTON_1
+//#define BSP_BUTTON_0   BUTTON_1
 //#define BSP_BUTTON_1   BUTTON_2
 //#define BSP_BUTTON_2   BUTTON_3
 //#define BSP_BUTTON_3   BUTTON_4

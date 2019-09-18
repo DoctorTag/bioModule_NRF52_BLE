@@ -557,7 +557,7 @@ D:\software\2018\feelkit\nRF5_SDK_15.2.0_9412b96\nRF5_SDK_15.2.0_9412b96\feelkit
 D:\software\2018\feelkit\nRF5_SDK_15.2.0_9412b96\nRF5_SDK_15.2.0_9412b96\feelkit\feel_demo\driver
 -I
 D:\software\2018\feelkit\nRF5_SDK_15.2.0_9412b96\nRF5_SDK_15.2.0_9412b96\feelkit\feel_demo\module
--DBOARD_CUSTOM=1
+-DBOARD_WMMED=1
 -DCONFIG_NFCT_PINS_AS_GPIOS=1
 -DFLOAT_ABI_HARD=1
 -DNRF52=1
